@@ -1,27 +1,48 @@
 import streamlit as st
-from database import get_connection
-from utils import hash_password, verify_password
+import sqlite3
+import hashlib
+
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def create_connection():
+    return sqlite3.connect("database/stattrack_official.db", check_same_thread=False)
 
 def login_user(username, password):
-    conn = get_connection()
+    conn = create_connection()
     c = conn.cursor()
-    c.execute("SELECT password_hash, role FROM users WHERE user_id = ?", (username,))
-    result = c.fetchone()
+    hashed = hash_password(password)
+    c.execute("SELECT user_id, name, password_hash, role, force_register FROM users WHERE username=?", (username,))
+    row = c.fetchone()
     conn.close()
-    if result and verify_password(password, result[0]):
-        return result[1]
+    if row and row[2] == hashed:
+        return {
+            "user_id": row[0],
+            "name": row[1],
+            "role": row[3],
+            "force_register": row[4]
+        }
     return None
 
-st.title("🔐 Log Masuk Pensyarah / Admin")
-username = st.text_input("ID Pengguna (No Staf)")
+st.set_page_config(page_title="StatTrack Login", layout="centered")
+st.title("📊 Log Masuk Sistem StatTrack")
+
+username = st.text_input("ID Pengguna")
 password = st.text_input("Katalaluan", type="password")
+
 if st.button("Log Masuk"):
-    role = login_user(username, password)
-    if role:
-        st.session_state.logged_in = True
-        st.session_state.user_id = username
-        st.session_state.role = role
-        st.success(f"Selamat datang, {username}!")
-        st.experimental_rerun()
+    user = login_user(username, password)
+    if user:
+        st.session_state['user_id'] = user["user_id"]
+        st.session_state['username'] = username
+        st.session_state['name'] = user["name"]
+        st.session_state['role'] = user["role"]
+
+        if user["force_register"] == 1:
+            st.success("Sila tukar katalaluan terlebih dahulu.")
+            st.switch_page("pages/2_register_first_time.py")
+        else:
+            st.success(f"Selamat datang, {user['name']}!")
+            st.switch_page("pages/3_dashboard.py")
     else:
-        st.error("ID atau katalaluan salah.")
+        st.error("ID Pengguna atau Katalaluan salah.")
