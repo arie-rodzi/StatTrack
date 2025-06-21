@@ -1,42 +1,48 @@
 import streamlit as st
+import sqlite3
+import pandas as pd
 
-st.set_page_config(page_title="StatTrack Dashboard", layout="centered")
-st.title("🏠 Dashboard StatTrack")
+st.set_page_config(page_title="Senarai Kursus (Awal)", layout="wide")
+st.title("📘 Paparan Senarai Kursus: LIC & RP")
 
-# Semak jika pengguna belum login
-if "user_id" not in st.session_state:
-    st.warning("Sila log masuk terlebih dahulu.")
-    st.stop()
+def create_connection():
+    return sqlite3.connect("database/stattrack_official.db", check_same_thread=False)
 
-# Paparan ringkasan
-st.subheader(f"Selamat datang, {st.session_state['name']} 👋")
-st.markdown(f"**Peranan:** `{st.session_state['role']}`")
+conn = create_connection()
 
-st.markdown("---")
+# Ambil semua kursus (LIC)
+df_courses = pd.read_sql_query("SELECT course_code, course_name, program_code, assigned_lecturer FROM courses", conn)
 
-# Menu berdasarkan peranan pengguna
-role = st.session_state["role"]
+# Ambil semua uploaded_by (RP)
+df_rp = pd.read_sql_query("SELECT DISTINCT course_code, uploaded_by FROM uploaded_files", conn)
 
-if role == "admin":
-    st.markdown("### 📋 Fungsi Pentadbir")
-    st.page_link("pages/4_upload_file.py", label="📤 Muat Naik Fail")
-    st.page_link("pages/5_view_uploaded_files.py", label="📁 Lihat Semua Fail")
-    st.page_link("pages/6_check_completion.py", label="✅ Semakan Fail Siap")
-    st.page_link("pages/7_download_files.py", label="⬇️ Muat Turun Fail")
-    st.page_link("pages/8_admin_panel.py", label="⚙️ Panel Admin")
+# Gabung ikut course_code
+df_merge = pd.merge(df_courses, df_rp, on="course_code", how="left")  # kekalkan semua kursus walau tiada RP
 
-elif role == "lecturer":
-    st.markdown("### 📚 Fungsi Pensyarah")
-    st.page_link("pages/4_upload_file.py", label="📤 Muat Naik Fail Kursus")
-    st.page_link("pages/5_view_uploaded_files.py", label="📁 Lihat Fail Anda")
-    st.page_link("pages/6_check_completion.py", label="✅ Semakan Fail Lengkap")
-    st.page_link("pages/7_download_files.py", label="⬇️ Muat Turun Fail")
+# Tukar nama kolum
+df_merge = df_merge.rename(columns={
+    "course_code": "Kod Kursus",
+    "course_name": "Nama Kursus",
+    "program_code": "Program",
+    "assigned_lecturer": "Pensyarah LIC",
+    "uploaded_by": "Pensyarah RP"
+})
 
-elif role == "student":
-    st.markdown("### 🎓 Fungsi Pelajar")
-    st.page_link("pages/5_view_uploaded_files.py", label="📁 Lihat Fail Kursus")
-    st.page_link("pages/7_download_files.py", label="⬇️ Muat Turun Fail")
+# Tapis ikut program (jika wujud)
+if "Program" in df_merge.columns and not df_merge["Program"].dropna().empty:
+    pilihan_program = sorted(df_merge["Program"].dropna().unique().tolist())
+    selected_program = st.selectbox("🎓 Tapis Mengikut Program", ["Semua"] + pilihan_program)
+    if selected_program != "Semua":
+        df_merge = df_merge[df_merge["Program"] == selected_program]
 
+# Susun kolum
+ordered_cols = ["Kod Kursus", "Nama Kursus", "Program", "Pensyarah LIC", "Pensyarah RP"]
+df_merge = df_merge[ordered_cols]
+
+# Papar
+if not df_merge.empty:
+    st.dataframe(df_merge, use_container_width=True)
 else:
-    st.error("Peranan tidak dikenali. Sila hubungi pentadbir.")
-# Placeholder for 3_dashboard.py
+    st.info("Tiada data untuk dipaparkan.")
+
+conn.close()
