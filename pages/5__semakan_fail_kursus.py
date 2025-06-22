@@ -1,5 +1,3 @@
-# Hasilkan fail Python gabungan: 5_semakan_fail_kursus.py
-gabungan_kod = """
 import streamlit as st
 import sqlite3
 import pandas as pd
@@ -20,12 +18,12 @@ conn = create_connection()
 c = conn.cursor()
 
 # Kursus yang pensyarah dilantik sebagai RP/LIC
-c.execute(\"""
+c.execute("""
     SELECT DISTINCT course_code, course_name
     FROM course_roles
     WHERE UPPER(lecturer_name) = UPPER(?)
     AND role IN ('RP', 'LIC')
-\""", (st.session_state["name"],))
+""", (st.session_state["name"],))
 courses = c.fetchall()
 course_dict = {code: name for code, name in courses}
 
@@ -36,12 +34,12 @@ if not course_dict:
 selected_course = st.selectbox("📘 Pilih Kursus", list(course_dict.keys()), format_func=lambda x: f"{x} - {course_dict[x]}")
 
 st.markdown("## 📁 Fail Dimuat Naik")
-c.execute(\"""
+c.execute("""
     SELECT fc.category_name, uf.subcategory_name, uf.filename, uf.upload_date
     FROM uploaded_files uf
     JOIN file_categories fc ON uf.category_id = fc.category_id
     WHERE uf.course_code = ? AND uf.uploaded_by = ?
-\""", (selected_course, st.session_state["user_id"]))
+""", (selected_course, st.session_state["user_id"]))
 rows = c.fetchall()
 
 if rows:
@@ -56,38 +54,30 @@ c.execute("SELECT category_id, category_name FROM file_categories")
 categories = c.fetchall()
 
 for cat_id, cat_name in categories:
-    c.execute(\"""
+    c.execute("""
         SELECT subcategory_name FROM file_subcategories
         WHERE category_id = ?
-    \""", (cat_id,))
+    """, (cat_id,))
     subcats = [row[0] for row in c.fetchall()]
     
     if not subcats:
         # Kalau tiada subkategori, semak terus kategori
-        c.execute(\"""
+        c.execute("""
             SELECT COUNT(*) FROM uploaded_files
             WHERE course_code = ? AND uploaded_by = ? AND category_id = ?
-        \""", (selected_course, st.session_state["user_id"], cat_id))
+        """, (selected_course, st.session_state["user_id"], cat_id))
         count = c.fetchone()[0]
         status = "✅" if count > 0 else "❌"
         st.write(f"{status} {cat_name}")
     else:
         st.write(f"### {cat_name}")
         for sub in subcats:
-            c.execute(\"""
+            c.execute("""
                 SELECT COUNT(*) FROM uploaded_files
                 WHERE course_code = ? AND uploaded_by = ? AND category_id = ? AND subcategory_name = ?
-            \""", (selected_course, st.session_state["user_id"], cat_id, sub))
+            """, (selected_course, st.session_state["user_id"], cat_id, sub))
             count = c.fetchone()[0]
             status = "✅" if count > 0 else "❌"
             st.write(f"- {status} {sub}")
 
 conn.close()
-"""
-
-# Simpan sebagai fail .py
-with open("/mnt/data/5_semakan_fail_kursus.py", "w", encoding="utf-8") as f:
-    f.write(gabungan_kod)
-
-"/mnt/data/5_semakan_fail_kursus.py"
-# Placeholder for 5_view_uploaded_files.py
