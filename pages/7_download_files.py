@@ -11,14 +11,14 @@ if "user_id" not in st.session_state or "role" not in st.session_state:
     st.error("Sila log masuk terlebih dahulu.")
     st.stop()
 
-# Sambungan ke pangkalan data
+# Sambungan DB
 def create_connection():
     return sqlite3.connect("database/stattrack_official.db", check_same_thread=False)
 
 conn = create_connection()
 c = conn.cursor()
 
-# ✅ Semua pensyarah/admin boleh akses semua kursus
+# Papar semua kursus
 c.execute("SELECT course_code, course_name FROM courses")
 courses = c.fetchall()
 course_dict = {code: name for code, name in courses}
@@ -27,26 +27,27 @@ if not course_dict:
     st.warning("Tiada kursus tersedia.")
     st.stop()
 
-# 📂 Dapatkan kategori fail
+# Papar semua kategori
 c.execute("SELECT category_id, category_name FROM file_categories")
 categories = c.fetchall()
 category_dict = {cid: cname for cid, cname in categories}
 
-# 📝 Borang muat naik
+# Pilihan pengguna
 selected_course = st.selectbox("📘 Pilih Kursus", list(course_dict.keys()), format_func=lambda x: f"{x} - {course_dict[x]}")
 selected_category = st.selectbox("🗂️ Pilih Kategori Fail", list(category_dict.keys()), format_func=lambda x: category_dict[x])
 
-# 🔎 Semak subkategori
+# Papar subkategori ikut kategori terpilih
 c.execute("SELECT subcategory_name FROM file_subcategories WHERE category_id = ?", (selected_category,))
 subcategories = [row[0] for row in c.fetchall()]
 selected_subcategory = None
 if subcategories:
     selected_subcategory = st.selectbox("📌 Pilih Subkategori", subcategories)
 
+# Muat naik fail
 uploaded_file = st.file_uploader("📎 Muat Naik Fail", type=["pdf", "docx", "xlsx", "png", "jpg"])
 
 if uploaded_file:
-    # Simpan fail
+    # Simpan fail dalam folder 'uploads'
     UPLOAD_DIR = "uploads"
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -57,9 +58,11 @@ if uploaded_file:
     with open(filepath, "wb") as f:
         f.write(uploaded_file.read())
 
-    # Simpan ke DB
+    # Simpan rekod dalam DB
     c.execute("""
-        INSERT INTO uploaded_files (course_code, category_id, filename, uploaded_by, upload_date, file_path, subcategory_name)
+        INSERT INTO uploaded_files (
+            course_code, category_id, filename, uploaded_by, upload_date, file_path, subcategory_name
+        )
         VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (
         selected_course,
@@ -72,4 +75,4 @@ if uploaded_file:
     ))
     conn.commit()
 
-    st.success(f"✅ Fail **{uploaded_file.name}** berjaya dimuat naik.")
+    st.success(f"✅ Fail **{uploaded_file.name}** untuk **{course_dict[selected_course]}** berjaya dimuat naik.")
