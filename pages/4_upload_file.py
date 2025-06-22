@@ -18,9 +18,14 @@ def create_connection():
 conn = create_connection()
 c = conn.cursor()
 
-# Dapatkan senarai kursus berdasarkan peranan
+# ✅ Dapatkan senarai kursus berdasarkan peranan
 if st.session_state["role"] == "lecturer":
-    c.execute("SELECT course_code, course_name FROM courses WHERE assigned_lecturer = ?", (st.session_state["user_id"],))
+    c.execute("""
+        SELECT DISTINCT c.course_code, c.course_name
+        FROM courses c
+        JOIN course_roles cr ON c.course_code = cr.course_code
+        WHERE cr.lecturer_id = ?
+    """, (st.session_state["user_id"],))
 else:  # admin boleh akses semua kursus
     c.execute("SELECT course_code, course_name FROM courses")
 
@@ -28,7 +33,7 @@ courses = c.fetchall()
 course_dict = {code: name for code, name in courses}
 
 if not course_dict:
-    st.warning("Tiada kursus tersedia untuk anda.")
+    st.warning("Tiada kursus yang anda dilantik sebagai RP atau LIC.")
     st.stop()
 
 # Dapatkan kategori fail
