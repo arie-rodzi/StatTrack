@@ -6,10 +6,13 @@ from datetime import datetime
 st.set_page_config(page_title="Muat Naik Fail Kursus", layout="centered")
 st.title("📤 Muat Naik Fail Kursus")
 
-# Semak login & peranan
-if "user_id" not in st.session_state or st.session_state["role"] not in ["admin", "lecturer"]:
-    st.warning("Modul ini hanya boleh diakses oleh pensyarah atau pentadbir.")
+# 🔒 Semak login & peranan
+if "user_id" not in st.session_state or "role" not in st.session_state:
+    st.error("Sila log masuk terlebih dahulu.")
     st.stop()
+
+# 💡 Debug (boleh padam nanti)
+# st.write("DEBUG:", st.session_state["name"], st.session_state["role"])
 
 # Sambungan ke pangkalan data
 def create_connection():
@@ -18,30 +21,27 @@ def create_connection():
 conn = create_connection()
 c = conn.cursor()
 
-# ✅ Dapatkan senarai kursus berdasarkan peranan
-if st.session_state["role"] == "lecturer":
-    c.execute("""
-        SELECT DISTINCT c.course_code, c.course_name
-        FROM courses c
-        JOIN course_roles cr ON c.course_code = cr.course_code
-        WHERE cr.lecturer_id = ?
-    """, (st.session_state["user_id"],))
-else:  # admin boleh akses semua kursus
-    c.execute("SELECT course_code, course_name FROM courses")
-
+# ✅ Semak peranan RP/LIC sahaja (bukan semua pensyarah)
+c.execute("""
+    SELECT DISTINCT course_code, course_name
+    FROM course_roles
+    WHERE UPPER(lecturer_name) = UPPER(?)
+    AND role IN ('RP', 'LIC')
+""", (st.session_state["name"],))
 courses = c.fetchall()
+
 course_dict = {code: name for code, name in courses}
 
 if not course_dict:
-    st.warning("Tiada kursus yang anda dilantik sebagai RP atau LIC.")
+    st.warning("Anda tidak dilantik sebagai RP atau LIC untuk sebarang kursus.")
     st.stop()
 
-# Dapatkan kategori fail
+# 📂 Dapatkan kategori fail
 c.execute("SELECT category_id, category_name FROM file_categories")
 categories = c.fetchall()
 category_dict = {cid: cname for cid, cname in categories}
 
-# Borang muat naik fail
+# 📝 Borang muat naik fail
 selected_course = st.selectbox("📚 Pilih Kursus", list(course_dict.keys()), format_func=lambda x: f"{x} - {course_dict[x]}")
 selected_category = st.selectbox("🗂️ Pilih Kategori Fail", list(category_dict.keys()), format_func=lambda x: category_dict[x])
 uploaded_file = st.file_uploader("📎 Muat Naik Fail", type=["pdf", "docx", "xlsx"])
