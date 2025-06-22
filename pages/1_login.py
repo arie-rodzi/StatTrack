@@ -43,6 +43,6 @@ if st.button("Log Masuk"):
             st.switch_page("pages/2_register_first_time.py")
         else:
             st.success(f"Selamat datang, {user['name']}!")
-            st.switch_page("pages/3_course_overview.py")
+            st.switch_page("pages/3_dashboard.py")  # ✅ Ini baris diperbetulkan
     else:
         st.error("ID Pengguna atau Katalaluan salah.")
