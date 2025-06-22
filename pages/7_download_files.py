@@ -1,10 +1,9 @@
 import streamlit as st
 import sqlite3
-import os
-from datetime import datetime
+import pandas as pd
 
-st.set_page_config(page_title="📤 Muat Naik Fail Kursus", layout="centered")
-st.title("📤 Muat Naik Fail Kursus")
+st.set_page_config(page_title="📥 Semakan & Muat Turun Fail", layout="wide")
+st.title("📥 Semakan & Muat Turun Fail Kursus")
 
 # Semak login
 if "user_id" not in st.session_state or "role" not in st.session_state:
@@ -18,61 +17,62 @@ def create_connection():
 conn = create_connection()
 c = conn.cursor()
 
-# Papar semua kursus
-c.execute("SELECT course_code, course_name FROM courses")
-courses = c.fetchall()
-course_dict = {code: name for code, name in courses}
-
-if not course_dict:
-    st.warning("Tiada kursus tersedia.")
-    st.stop()
-
-# Papar semua kategori
+# Papar senarai semua kategori & subkategori
 c.execute("SELECT category_id, category_name FROM file_categories")
-categories = c.fetchall()
-category_dict = {cid: cname for cid, cname in categories}
+category_dict = {cid: cname for cid, cname in c.fetchall()}
 
-# Pilihan pengguna
-selected_course = st.selectbox("📘 Pilih Kursus", list(course_dict.keys()), format_func=lambda x: f"{x} - {course_dict[x]}")
-selected_category = st.selectbox("🗂️ Pilih Kategori Fail", list(category_dict.keys()), format_func=lambda x: category_dict[x])
+# Pilihan jenis capaian
+filter_type = st.radio("🔍 Pilih Kaedah Carian Fail", ["Semua Subjek", "Mengikut Program", "Subjek Individu"], horizontal=True)
 
-# Papar subkategori ikut kategori terpilih
-c.execute("SELECT subcategory_name FROM file_subcategories WHERE category_id = ?", (selected_category,))
-subcategories = [row[0] for row in c.fetchall()]
-selected_subcategory = None
-if subcategories:
-    selected_subcategory = st.selectbox("📌 Pilih Subkategori", subcategories)
+# Muatkan semua data kursus
+c.execute("SELECT course_code, course_name, program_code FROM courses")
+all_courses = c.fetchall()
+course_dict = {code: (name, prog) for code, name, prog in all_courses}
 
-# Muat naik fail
-uploaded_file = st.file_uploader("📎 Muat Naik Fail", type=["pdf", "docx", "xlsx", "png", "jpg"])
+filtered_courses = []
 
-if uploaded_file:
-    # Simpan fail dalam folder 'uploads'
-    UPLOAD_DIR = "uploads"
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+if filter_type == "Semua Subjek":
+    filtered_courses = list(course_dict.keys())
+elif filter_type == "Mengikut Program":
+    selected_program = st.selectbox("🏫 Pilih Program", sorted(set(p for _, (_, p) in course_dict.items())))
+    filtered_courses = [code for code, (_, prog) in course_dict.items() if prog == selected_program]
+elif filter_type == "Subjek Individu":
+    selected_course = st.selectbox("📘 Pilih Subjek", list(course_dict.keys()), format_func=lambda x: f"{x} - {course_dict[x][0]}")
+    filtered_courses = [selected_course]
 
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    filename = f"{selected_course}_{selected_category}_{timestamp}_{uploaded_file.name}"
-    filepath = os.path.join(UPLOAD_DIR, filename)
+# Pilihan jenis fail
+filter_category = st.selectbox("🗂️ Tapis Kategori Fail (Optional)", ["Semua"] + list(category_dict.values()))
 
-    with open(filepath, "wb") as f:
-        f.write(uploaded_file.read())
+# Papar semua fail yang ditapis
+query = "SELECT course_code, category_id, subcategory_name, filename, uploaded_by, upload_date, file_path FROM uploaded_files"
+c.execute(query)
+rows = c.fetchall()
 
-    # Simpan rekod dalam DB
-    c.execute("""
-        INSERT INTO uploaded_files (
-            course_code, category_id, filename, uploaded_by, upload_date, file_path, subcategory_name
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (
-        selected_course,
-        selected_category,
-        uploaded_file.name,
-        st.session_state["user_id"],
-        timestamp,
-        filepath,
-        selected_subcategory
-    ))
-    conn.commit()
+df = pd.DataFrame(rows, columns=["Kod Kursus", "ID Kategori", "Subkategori", "Nama Fail", "Pemuat Naik", "Tarikh", "Path"])
+df["Nama Kursus"] = df["Kod Kursus"].apply(lambda x: course_dict[x][0] if x in course_dict else x)
+df["Program"] = df["Kod Kursus"].apply(lambda x: course_dict[x][1] if x in course_dict else "N/A")
+df["Kategori"] = df["ID Kategori"].apply(lambda x: category_dict.get(x, "Tidak Diketahui"))
 
-    st.success(f"✅ Fail **{uploaded_file.name}** untuk **{course_dict[selected_course]}** berjaya dimuat naik.")
+# Tapis ikut subjek
+df = df[df["Kod Kursus"].isin(filtered_courses)]
+
+# Tapis ikut kategori jika dipilih
+if filter_category != "Semua":
+    df = df[df["Kategori"] == filter_category]
+
+# Papar jadual
+if df.empty:
+    st.warning("Tiada fail dijumpai untuk pilihan yang ditapis.")
+else:
+    st.dataframe(df[["Kod Kursus", "Nama Kursus", "Kategori", "Subkategori", "Nama Fail", "Pemuat Naik", "Tarikh"]])
+
+    # Pilihan muat turun
+    for i, row in df.iterrows():
+        with open(row["Path"], "rb") as f:
+            st.download_button(
+                label=f"📥 Muat Turun {row['Nama Fail']} ({row['Kod Kursus']})",
+                data=f,
+                file_name=row["Nama Fail"],
+                mime="application/octet-stream",
+                key=f"download_{i}"
+            )
